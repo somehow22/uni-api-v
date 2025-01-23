@@ -691,7 +691,7 @@ async def generate_sse_response(timestamp, model, content=None, tools_id=None, f
                 "finish_reason": finish_reason
             }
         ],
-        "usage": None,
+        "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "total_tokens": total_tokens} if total_tokens else None,
         "system_fingerprint": "fp_d576307f90",
     }
     if function_call_content:
@@ -701,10 +701,6 @@ async def generate_sse_response(timestamp, model, content=None, tools_id=None, f
         # sample_data["choices"][0]["delta"] = {"tool_calls":[{"index":0,"function":{"id": tools_id, "name": function_call_name}}]}
     if role:
         sample_data["choices"][0]["delta"] = {"role": role, "content": ""}
-    if total_tokens:
-        total_tokens = prompt_tokens + completion_tokens
-        sample_data["usage"] = {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "total_tokens": total_tokens}
-        sample_data["choices"] = []
     json_data = json.dumps(sample_data, ensure_ascii=False)
 
     # 构建SSE响应
