@@ -31,40 +31,30 @@ async def fetch_gemini_response_stream(client, url, headers, payload, model):
         function_full_response = "{"
         need_function_call = False
         is_finish = False
-        # line_index = 0
-        # last_text_line = 0
-        # if "thinking" in model:
-        #     is_thinking = True
-        # else:
-        #     is_thinking = False
         async for chunk in response.aiter_text():
             buffer += chunk
 
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-                # line_index += 1
                 if line and '\"finishReason\": \"' in line:
+                    try:
+                        json_data = json.loads("{" + line + "}")
+                        finish_reason = json_data.get("finishReason")
+                        sse_string = await generate_sse_response(timestamp, model, finish_reason=finish_reason)
+                        yield sse_string
+                    except json.JSONDecodeError:
+                        logger.error(f"Failed to parse finish reason JSON: {line}")
                     is_finish = True
                     break
-                # print(line)
                 if line and '\"text\": \"' in line:
                     try:
                         json_data = json.loads( "{" + line + "}")
                         content = json_data.get('text', '')
                         content = "\n".join(content.split("\\n"))
-                        # content = content.replace("\n", "\n\n")
-                        # if last_text_line == 0 and is_thinking:
-                        #     content = "> " + content.lstrip()
-                        # if is_thinking:
-                        #     content = content.replace("\n", "\n> ")
-                        # if last_text_line == line_index - 3:
-                        #     is_thinking = False
-                        #     content = "\n\n\n" + content.lstrip()
                         sse_string = await generate_sse_response(timestamp, model, content=content)
                         yield sse_string
                     except json.JSONDecodeError:
                         logger.error(f"无法解析JSON: {line}")
-                    # last_text_line = line_index
 
                 if line and ('\"functionCall\": {' in line or revicing_function_call):
                     revicing_function_call = True
@@ -104,7 +94,6 @@ async def fetch_vertex_claude_response_stream(client, url, headers, payload, mod
             buffer += chunk
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-                # logger.info(f"{line}")
                 if line and '\"text\": \"' in line:
                     try:
                         json_data = json.loads( "{" + line + "}")
@@ -150,7 +139,6 @@ async def fetch_gpt_response_stream(client, url, headers, payload):
             buffer += chunk
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-                # logger.info("line: %s", repr(line))
                 if line and line != "data: " and line != "data:" and not line.startswith(": "):
                     result = line.lstrip("data: ")
                     if result.strip() == "[DONE]":
@@ -179,7 +167,6 @@ async def fetch_azure_response_stream(client, url, headers, payload):
             buffer += chunk
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-                # logger.info("line: %s", repr(line))
                 if line and line != "data: " and line != "data:" and not line.startswith(": "):
                     result = line.lstrip("data: ")
                     if result.strip() == "[DONE]":
@@ -208,7 +195,6 @@ async def fetch_cloudflare_response_stream(client, url, headers, payload, model)
             buffer += chunk
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-                # logger.info("line: %s", repr(line))
                 if line.startswith("data:"):
                     line = line.lstrip("data: ")
                     if line == "[DONE]":
@@ -233,7 +219,6 @@ async def fetch_cohere_response_stream(client, url, headers, payload, model):
             buffer += chunk
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-                # logger.info("line: %s", repr(line))
                 resp: dict = json.loads(line)
                 if resp.get("is_finished") == True:
                     yield "data: [DONE]" + end_of_line
@@ -253,12 +238,18 @@ async def fetch_claude_response_stream(client, url, headers, payload, model):
         buffer = ""
         input_tokens = 0
         async for chunk in response.aiter_text():
-            # logger.info(f"chunk: {repr(chunk)}")
             buffer += chunk
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-                # logger.info(line)
-
+                if line.startswith("data:"):
+                    line = line.lstrip("data: ")
+                    try:
+                        resp = json.loads(line)
+                        if "stop_reason" in resp:
+                            sse_string = await generate_sse_response(timestamp, model, finish_reason=resp["stop_reason"])
+                            yield sse_string
+                    except json.JSONDecodeError:
+                        logger.error(f"Failed to parse Claude response JSON: {line}")
                 if line.startswith("data:"):
                     line = line.lstrip("data: ")
                     resp: dict = json.loads(line)
@@ -334,7 +325,6 @@ async def fetch_response(client, url, headers, payload, engine, model):
         content = ""
         for item in parsed_data:
             chunk = safe_get(item, "candidates", 0, "content", "parts", 0, "text")
-            # logger.info(f"chunk: {repr(chunk)}")
             if chunk:
                 content += chunk
 
@@ -372,7 +362,6 @@ async def fetch_response(client, url, headers, payload, engine, model):
         yield response_json
 
 async def fetch_response_stream(client, url, headers, payload, engine, model):
-    # try:
     if engine == "gemini" or engine == "vertex-gemini":
         async for chunk in fetch_gemini_response_stream(client, url, headers, payload, model):
             yield chunk
@@ -396,7 +385,3 @@ async def fetch_response_stream(client, url, headers, payload, engine, model):
             yield chunk
     else:
         raise ValueError("Unknown response")
-    # except httpx.ConnectError as e:
-    #     yield {"error": f"500", "details": "fetch_response_stream Connect Error"}
-    # except httpx.ReadTimeout as e:
-    #     yield {"error": f"500", "details": "fetch_response_stream Read Response Timeout"}

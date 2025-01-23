@@ -496,6 +496,9 @@ async def error_handling_wrapper(generator, channel_id, engine, stream, error_tr
     except StopAsyncIteration:
         raise HTTPException(status_code=400, detail="data: {'error': 'No data returned'}")
 
+# Add this constant at the module level, near the top of the file
+MODEL_OWNER = "magic"
+
 def post_all_models(api_index, config, api_list, models_list):
     all_models = []
     unique_models = set()
@@ -518,7 +521,7 @@ def post_all_models(api_index, config, api_list, models_list):
                                     "id": model_item,
                                     "object": "model",
                                     "created": 1720524448858,
-                                    "owned_by": "uni-api"
+                                    "owned_by": MODEL_OWNER
                                 }
                                 all_models.append(model_info)
                     else:
@@ -533,8 +536,7 @@ def post_all_models(api_index, config, api_list, models_list):
                                         "id": model_item,
                                         "object": "model",
                                         "created": 1720524448858,
-                                        "owned_by": "uni-api"
-                                        # "owned_by": provider_item['provider']
+                                        "owned_by": MODEL_OWNER
                                     }
                                     all_models.append(model_info)
                 else:
@@ -545,7 +547,7 @@ def post_all_models(api_index, config, api_list, models_list):
                                 "id": model,
                                 "object": "model",
                                 "created": 1720524448858,
-                                "owned_by": "uni-api"
+                                "owned_by": MODEL_OWNER
                             }
                             all_models.append(model_info)
                     else:
@@ -560,7 +562,7 @@ def post_all_models(api_index, config, api_list, models_list):
                                         "id": model_item,
                                         "object": "model",
                                         "created": 1720524448858,
-                                        "owned_by": "uni-api"
+                                        "owned_by": MODEL_OWNER
                                     }
                                     all_models.append(model_info)
                 continue
@@ -574,7 +576,7 @@ def post_all_models(api_index, config, api_list, models_list):
                     "id": model,
                     "object": "model",
                     "created": 1720524448858,
-                    "owned_by": model
+                    "owned_by": MODEL_OWNER
                 }
                 all_models.append(model_info)
 
@@ -593,7 +595,7 @@ def get_all_models(config):
                     "id": model,
                     "object": "model",
                     "created": 1720524448858,
-                    "owned_by": "uni-api"
+                    "owned_by": MODEL_OWNER
                 }
                 all_models.append(model_info)
 
