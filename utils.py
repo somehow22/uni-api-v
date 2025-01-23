@@ -675,7 +675,7 @@ end_of_line = "\n\n"
 
 import random
 import string
-async def generate_sse_response(timestamp, model, content=None, tools_id=None, function_call_name=None, function_call_content=None, role=None, total_tokens=0, prompt_tokens=0, completion_tokens=0):
+async def generate_sse_response(timestamp, model, content=None, tools_id=None, function_call_name=None, function_call_content=None, role=None, total_tokens=0, prompt_tokens=0, completion_tokens=0, finish_reason=None):
     random.seed(timestamp)
     random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=29))
     sample_data = {
@@ -688,7 +688,7 @@ async def generate_sse_response(timestamp, model, content=None, tools_id=None, f
                 "index": 0,
                 "delta": {"content": content} if content else {},
                 "logprobs": None,
-                "finish_reason": None if content else "stop"
+                "finish_reason": finish_reason
             }
         ],
         "usage": None,
@@ -712,7 +712,7 @@ async def generate_sse_response(timestamp, model, content=None, tools_id=None, f
 
     return sse_response
 
-async def generate_no_stream_response(timestamp, model, content=None, tools_id=None, function_call_name=None, function_call_content=None, role=None, total_tokens=0, prompt_tokens=0, completion_tokens=0):
+async def generate_no_stream_response(timestamp, model, content=None, tools_id=None, function_call_name=None, function_call_content=None, role=None, total_tokens=0, prompt_tokens=0, completion_tokens=0, finish_reason="stop"):
     random.seed(timestamp)
     random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=29))
     sample_data = {
@@ -729,7 +729,7 @@ async def generate_no_stream_response(timestamp, model, content=None, tools_id=N
                     "refusal": None
                 },
                 "logprobs": None,
-                "finish_reason": "stop"
+                "finish_reason": finish_reason
             }
         ],
         "usage": None,

@@ -26,6 +26,7 @@ async def fetch_gemini_response_stream(client, url, headers, payload, model):
         if error_message:
             yield error_message
             return
+            
         buffer = ""
         revicing_function_call = False
         function_full_response = "{"
@@ -33,29 +34,57 @@ async def fetch_gemini_response_stream(client, url, headers, payload, model):
         is_finish = False
         async for chunk in response.aiter_text():
             buffer += chunk
-
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-                if line and '\"finishReason\": \"' in line:
-                    try:
-                        json_data = json.loads("{" + line + "}")
-                        finish_reason = json_data.get("finishReason")
-                        sse_string = await generate_sse_response(timestamp, model, finish_reason=finish_reason)
-                        yield sse_string
-                    except json.JSONDecodeError:
-                        logger.error(f"Failed to parse finish reason JSON: {line}")
-                    is_finish = True
-                    break
-                if line and '\"text\": \"' in line:
-                    try:
-                        json_data = json.loads( "{" + line + "}")
-                        content = json_data.get('text', '')
-                        content = "\n".join(content.split("\\n"))
-                        sse_string = await generate_sse_response(timestamp, model, content=content)
-                        yield sse_string
-                    except json.JSONDecodeError:
-                        logger.error(f"无法解析JSON: {line}")
+                line = line.strip()
+                if line.startswith(","):
+                    line = line[1:].strip()
+                if line.endswith("]"):
+                    line = line[:-1].strip()
 
+                if line.startswith("{") and line.endswith("}"):
+                    try:
+                        response_data = json.loads(line)
+                        if "candidates" in response_data and response_data["candidates"]:
+                            candidate = response_data["candidates"][0]
+                            # Handle text content
+                            if "content" in candidate and "parts" in candidate["content"]:
+                                text = candidate["content"]["parts"][0].get("text", "")
+                                if text:
+                                    sse_string = await generate_sse_response(timestamp, model, content=text)
+                                    yield sse_string
+                            
+                            # Pass through the entire response when we get finish_reason
+                            if "finishReason" in candidate:
+                                sse_data = {
+                                    "id": f"chatcmpl-{timestamp}",
+                                    "object": "chat.completion.chunk",
+                                    "created": timestamp,
+                                    "model": model,
+                                    "choices": [{
+                                        "index": 0,
+                                        "delta": {},
+                                        "logprobs": None,
+                                        "finish_reason": candidate["finishReason"]
+                                    }]
+                                }
+                                yield "data: " + json.dumps(sse_data) + end_of_line
+                                is_finish = True
+
+                        # Handle usage metadata
+                        if "usageMetadata" in response_data:
+                            metadata = response_data["usageMetadata"]
+                            sse_string = await generate_sse_response(
+                                timestamp, model,
+                                prompt_tokens=metadata["promptTokenCount"],
+                                completion_tokens=metadata["candidatesTokenCount"],
+                                total_tokens=metadata["totalTokenCount"]
+                            )
+                            yield sse_string
+                    except json.JSONDecodeError:
+                        pass
+
+                # Keep function call handling
                 if line and ('\"functionCall\": {' in line or revicing_function_call):
                     revicing_function_call = True
                     need_function_call = True
@@ -340,8 +369,16 @@ async def fetch_response(client, url, headers, payload, engine, model):
             logger.error(f"Unknown role: {role}")
             role = "assistant"
 
+        # Get and relay the original finish_reason
+        finish_reason = safe_get(parsed_data, -1, "candidates", 0, "finishReason", default="stop")
+        
         timestamp = int(datetime.timestamp(datetime.now()))
-        yield await generate_no_stream_response(timestamp, model, content=content, tools_id=None, function_call_name=None, function_call_content=None, role=role, total_tokens=total_tokens, prompt_tokens=prompt_tokens, completion_tokens=candidates_tokens)
+        yield await generate_no_stream_response(
+            timestamp, model, content=content, role=role,
+            total_tokens=total_tokens, prompt_tokens=prompt_tokens,
+            completion_tokens=candidates_tokens,
+            finish_reason=finish_reason  # Pass through the original finish_reason
+        )
 
     elif engine == "azure":
         response_json = response.json()
